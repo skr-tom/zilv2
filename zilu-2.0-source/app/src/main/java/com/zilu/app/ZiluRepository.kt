@@ -25,7 +25,7 @@ class ZiluRepository(context: Context) {
 
     private fun decode(root: JSONObject) = AppState(
         tasks = root.array("tasks") { task(it) }, plans = root.array("plans") { plan(it) },
-        deletedPlans = root.array("deletedPlans") { plan(it) }, logs = root.array("logs") { log(it) },
+     deletedPlans = root.array("deletedPlans") { plan(it) }, statusLogs = root.array("logs") { log(it) },
         summaries = root.array("summaries") { summary(it) }, focusRecords = root.array("focus") { focus(it) },
         settings = settings(root.optJSONObject("settings") ?: JSONObject())
     )
