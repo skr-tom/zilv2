@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.zilu.app
 
 import android.Manifest
@@ -7,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -17,22 +20,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.LocalTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -270,8 +271,10 @@ private fun PlanCard(plan: Plan, changePlan: (Plan, ItemStatus) -> Unit, changeG
 @Composable
 private fun ReflectionEditor(plan: Plan, save: (Plan, String) -> Unit) {
     var text by remember(plan.id) { mutableStateOf(plan.completionReflection) }
-    OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("完成心得（可随时再编辑）") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-    TextButton(onClick = { save(plan, text) }, Modifier.align(Alignment.End)) { Text("保存心得") }
+    Column(Modifier.fillMaxWidth()) {
+        OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("完成心得（可随时再编辑）") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+        TextButton(onClick = { save(plan, text) }, Modifier.align(Alignment.End)) { Text("保存心得") }
+    }
 }
 
 @Composable
@@ -366,7 +369,7 @@ private fun SettingsScreen(state: AppState, controller: ZiluController, context:
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        val result = runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { controller.restore(it) } ?: error("文件为空") }
+        val result = runCatching { context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { controller.restore(it).getOrThrow() } ?: error("文件为空") }
         restoreMessage = if (result.isSuccess) "备份已恢复" else "恢复失败：请确认选择的是自律备份文件"
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -379,8 +382,8 @@ private fun SettingsScreen(state: AppState, controller: ZiluController, context:
         when (recordMode) {
             "设置" -> {
                 item { AppearanceCard(state.settings, controller::saveSettings) }
-                item { SoundCard(state.settings, soundPicker, context) }
-                item { BackupCard(exportLauncher, importLauncher) }
+                item { SoundCard(state.settings, { soundPicker.launch(arrayOf("audio/*")) }, context) }
+                item { BackupCard({ exportLauncher.launch("zilu-backup.json") }, { importLauncher.launch(arrayOf("*/*")) }) }
                 item { restoreMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) } }
             }
             "总结" -> item { SummaryEditor(state, controller::saveSummary) }
@@ -413,11 +416,11 @@ private fun SoundCard(settings: AppSettings, pickSound: () -> Unit, context: Con
 }
 
 @Composable
-private fun BackupCard(export: () -> Unit, import: () -> Unit) {
+private fun BackupCard(onExport: () -> Unit, onImport: () -> Unit) {
     ElevatedCard { Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text("数据保存与迁移", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text("所有修改已自动保存在本机。导出备份后，可在新手机或重新安装后恢复。", style = MaterialTheme.typography.bodySmall)
-        Row { TextButton(onClick = export) { Icon(Icons.Default.Upload, null); Text("导出备份") }; TextButton(onClick = import) { Icon(Icons.Default.Download, null); Text("恢复备份") } }
+        Row { TextButton(onClick = onExport) { Icon(Icons.Default.Upload, null); Text("导出备份") }; TextButton(onClick = onImport) { Icon(Icons.Default.Download, null); Text("恢复备份") } }
     } }
 }
 
