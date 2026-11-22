@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.zilu.app
 
 import android.Manifest
@@ -8,6 +10,7 @@ import android.media.RingtoneManager
 import android.widget.NumberPicker
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -22,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,7 +61,7 @@ private class ZiluController(private val context: Context) {
         save(state.copy(tasks = state.tasks + task)); ReminderScheduler.schedule(context, task.id, task.title, reminder)
     }
     fun startTask(task: DailyTask) { val session = TaskTimerService.start(context, task); save(state.copy(activeFocus = session)) }
-    fun addPlan(title: String, date: String, goalNames: List<String>) = save(state.copy(plans = state.plans + Plan(title = title.trim(), dueDate = date, subGoals = goalNames.filter { it.isNotBlank() }.map { SubGoal(title = it.trim()) }.ifEmpty { listOf(SubGoal(title = "子目标 1")) }))
+    fun addPlan(title: String, date: String, goalNames: List<String>) = save(state.copy(plans = state.plans + Plan(title = title.trim(), dueDate = date, subGoals = goalNames.filter { it.isNotBlank() }.map { SubGoal(title = it.trim()) }.ifEmpty { listOf(SubGoal(title = "子目标 1")) })))
     fun cycleGoal(plan: Plan, goal: SubGoal) {
         val next = when (goal.status) { ItemStatus.TODO -> ItemStatus.IN_PROGRESS; ItemStatus.IN_PROGRESS -> ItemStatus.DONE; ItemStatus.DONE -> ItemStatus.TODO }
         val changed = plan.copy(subGoals = plan.subGoals.map { if (it.id == goal.id) goal.copy(status = next) else it })
