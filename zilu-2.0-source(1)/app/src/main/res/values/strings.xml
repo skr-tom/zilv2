@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">自律</string>
+    <string name="notification_channel">自律提醒</string>
+</resources>
