@@ -5,9 +5,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-env:
-  PROJECT_DIR: ZILI-3.0
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,11 +20,32 @@ jobs:
         with:
           gradle-version: 8.9
 
+      - name: Locate project and show structure
+        run: |
+          echo "== 仓库根目录 =="
+          ls -la
+          echo "== 查找 Gradle 工程 =="
+          SETTINGS=$(find . -maxdepth 4 \( -name settings.gradle -o -name settings.gradle.kts \) -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "没有找到 settings.gradle，请检查上传的文件结构"
+            find . -maxdepth 3 -not -path "./.git/*"
+            exit 1
+          fi
+          DIR=$(dirname "$SETTINGS")
+          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
+          echo "工程目录: $DIR"
+
       - name: Build debug APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle assembleDebug --no-daemon
+        run: |
+          cd "$PROJECT_DIR"
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug --no-daemon
+          else
+            gradle assembleDebug --no-daemon
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: zili-3.0-apk
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: "**/build/outputs/apk/debug/*.apk"
