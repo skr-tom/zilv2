@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_DIR: "zilu-2.0-source （1）"
+  PROJECT_DIR: ZILI-3.0
 
 jobs:
   build:
@@ -24,10 +24,10 @@ jobs:
           gradle-version: 8.9
 
       - name: Build debug APK
-        working-directory: "${{ env.PROJECT_DIR }}"
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle assembleDebug --no-daemon
 
       - uses: actions/upload-artifact@v4
         with:
-          name: zilu-2.0-apk
-          path: "${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk"
+          name: zili-3.0-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
