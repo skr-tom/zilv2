@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 通知栏小图标：纯白沙漏剪影，系统会自动着色，保证在通知栏清晰可见 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 上盖 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3.5,2 L20.5,2 L20.5,4.8 L3.5,4.8 Z" />
+    <!-- 下盖 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3.5,19.2 L20.5,19.2 L20.5,22 L3.5,22 Z" />
+    <!-- 瓶身（漏斗形） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6.2,4.8 L17.8,4.8 L12.7,12 L17.8,19.2 L6.2,19.2 L11.3,12 Z" />
+</vector>
