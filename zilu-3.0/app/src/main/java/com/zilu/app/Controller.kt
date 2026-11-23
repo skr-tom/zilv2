@@ -240,7 +240,8 @@ class ZiluController(private val context: Context) {
     fun saveNote(date: LocalDate, content: String) {
         update { s ->
             val others = s.notes.filterNot { it.date == date.toString() }
-            if (content.isBlank()) others else others + DailyNote(date.toString(), content)
+            val nextNotes = if (content.isBlank()) others else others + DailyNote(date.toString(), content)
+            s.copy(notes = nextNotes)
         }
     }
 
