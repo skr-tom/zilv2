@@ -339,4 +339,138 @@ class ZiluController(private val context: Context) {
     fun saveReflection(folderId: String, planId: String, value: String) {
         updateFolder(folderId) { f ->
             f.copy(plans = f.plans.map { p ->
-                if (p.id ==
+                if (p.id == planId) p.copy(reflection = value) else p
+            })
+        }
+    }
+
+    /** 一级拖动排序：按新的顺序重写 order（越靠前权重越大）。 */
+    fun reorderFolders(orderedIds: List<String>) {
+        update { s ->
+            val top = nextOrder(s.folders.map { it.order }) + orderedIds.size
+            val rank = orderedIds.withIndex().associate { (index, id) -> id to (top - index) }
+            s.copy(folders = s.folders.map { f -> f.copy(order = rank[f.id] ?: f.order) })
+        }
+    }
+
+    /** 二级计划拖动排序：按新的顺序重写文件夹内 plans 的 sortOrder。 */
+    fun reorderPlans(folderId: String, orderedPlanIds: List<String>) {
+        updateFolderKeepOrder(folderId) { f ->
+            val top = nextOrder(f.plans.map { it.sortOrder }) + orderedPlanIds.size
+            val rank = orderedPlanIds.withIndex().associate { (index, id) -> id to (top - index) }
+            f.copy(plans = f.plans.map { p -> p.copy(sortOrder = rank[p.id] ?: p.sortOrder) })
+        }
+    }
+
+    /** 三级子计划拖动排序：按新的顺序重写计划内 subPlans 的 sortOrder。 */
+    fun reorderSubPlans(folderId: String, planId: String, orderedSubPlanIds: List<String>) {
+        updateFolderKeepOrder(folderId) { f ->
+            f.copy(plans = f.plans.map { p ->
+                if (p.id != planId) p
+                else {
+                    val top = nextOrder(p.subPlans.map { it.sortOrder }) + orderedSubPlanIds.size
+                    val rank = orderedSubPlanIds.withIndex().associate { (index, id) -> id to (top - index) }
+                    p.copy(subPlans = p.subPlans.map { sub ->
+                        sub.copy(sortOrder = rank[sub.id] ?: sub.sortOrder)
+                    })
+                }
+            })
+        }
+    }
+
+    // ------------------------------------------------------------------ 待办
+
+    fun addTodo(title: String, date: LocalDate, colorIndex: Int) {
+        if (title.isBlank()) return
+        update { s ->
+            val order = s.todos.count { it.date == date.toString() }
+            s.copy(
+                todos = s.todos + TodoItem(
+                    title = title.trim(),
+                    date = date.toString(),
+                    colorIndex = colorIndex,
+                    sortOrder = order
+                )
+            )
+        }
+    }
+
+    fun toggleTodo(id: String) {
+        var becameDone = false
+        update { s ->
+            val target = s.todos.firstOrNull { it.id == id } ?: return@update s
+            becameDone = !target.done
+            val flipped = s.todos.map { if (it.id == id) it.copy(done = !it.done) else it }
+            val day = target.date
+            val sorted = flipped.filter { it.date == day }
+                .sortedWith(compareBy({ it.done }, { it.sortOrder }, { it.createdAt }))
+            val newIndex = sorted.withIndex().associate { it.value.id to it.index }
+            s.copy(todos = flipped.map { item ->
+                if (item.date == day) item.copy(sortOrder = newIndex[item.id] ?: item.sortOrder) else item
+            })
+        }
+        if (becameDone) celebrate()
+    }
+
+    fun deleteTodo(id: String) {
+        update { s -> s.copy(todos = s.todos.filterNot { it.id == id }) }
+    }
+
+    /** 拖动排序结束后调用：按新的顺序重写这一天的 sortOrder。 */
+    fun reorderTodos(date: LocalDate, orderedIds: List<String>) {
+        update { s ->
+            val indexOf = orderedIds.withIndex().associate { it.value to it.index }
+            s.copy(todos = s.todos.map { todo ->
+                if (todo.date != date.toString()) todo
+                else todo.copy(sortOrder = indexOf[todo.id] ?: todo.sortOrder)
+            })
+        }
+    }
+
+    // ------------------------------------------------------------------ 小记
+
+    fun saveNote(date: LocalDate, content: String) {
+        update { s ->
+            val others = s.notes.filterNot { it.date == date.toString() }
+            val nextNotes = if (content.isBlank()) others else others + DailyNote(date.toString(), content)
+            s.copy(notes = nextNotes)
+        }
+    }
+
+    // ------------------------------------------------------------------ 设置
+
+    fun saveSettings(settings: AppSettings) {
+        val previous = repo.load().settings
+        update { it.copy(settings = settings) }
+        if (previous.ringtoneUri != settings.ringtoneUri) {
+            Notifier.rebuildForRingtone(context)
+        } else {
+            Notifier.ensureChannels(context, settings)
+        }
+    }
+
+    /** 勾选完成时的铃声 + 振动反馈。 */
+    private fun celebrate() {
+        SoundFeedback.celebrate(context, repo.load().settings)
+    }
+}
+
+// ------------------------------------------------------------------ 排序辅助函数
+
+/** 一级文件夹排序：置顶在前，其次按 order 降序。 */
+fun sortedFolders(state: AppState): List<PlanFolder> =
+    state.folders.sortedWith(compareByDescending<PlanFolder> { it.pinned }.thenByDescending { it.order })
+
+/** 二级计划排序：置顶在前，其次按 sortOrder 降序。 */
+fun sortedPlans(folder: PlanFolder): List<Plan> =
+    folder.plans.sortedWith(compareByDescending<Plan> { it.pinned }.thenByDescending { it.sortOrder })
+
+/** 三级子计划排序：置顶在前，其次按 sortOrder 降序。 */
+fun sortedSubPlans(plan: Plan): List<SubPlan> =
+    plan.subPlans.sortedWith(compareByDescending<SubPlan> { it.pinned }.thenByDescending { it.sortOrder })
+
+/** 某一天的待办：排序只认 sortOrder，完成沉底与拖动排序都由 sortOrder 表达。 */
+fun todosOf(state: AppState, date: LocalDate): List<TodoItem> =
+    state.todos
+        .filter { it.date == date.toString() }
+        .sortedWith(compareBy({ it.sortOrder }, { it.createdAt }))
