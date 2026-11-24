@@ -8,10 +8,6 @@ import java.time.LocalDate
 /**
  * 本地离线存储。每次有意义的操作后立即落盘。
  * v4 使用全新的 key（zilu_v4），首次启动会把 v2 的旧数据迁移过来，避免老用户丢数据。
- *
- * 读取时会做两件规范化：
- * 1. 所有「过去日期且未完成」的待办自动平移到今天，直到用户勾选完成为止；
- * 2. 旧数据里没有文件夹排序权重时，按原有顺序补一个，保证默认排序稳定。
  */
 class ZiluRepository(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -126,17 +122,12 @@ class ZiluRepository(context: Context) {
         )
     }
 
-    /**
-     * 未完成的待办自动顺延：昨天（或更早）没做的事，今天继续出现在今天，直到勾选完成。
-     * 完成后 done=true，不再参与顺延，留在完成当天。originalDate 保留最初日期，方便界面标注来源。
-     */
     private fun rollOverTodos(todos: List<TodoItem>): List<TodoItem> {
         val today = LocalDate.now().toString()
         val pending = todos.filter { !it.done && it.date.isNotBlank() && it.date < today }
         if (pending.isEmpty()) return todos
         val pendingIds = pending.map { it.id }.toSet()
         val rest = todos.filterNot { it.id in pendingIds }
-        // 顺延来的任务排在当天已有未完成任务的后面，避免打乱今天原本的顺序
         val base = rest.count { it.date == today && !it.done }
         val moved = pending
             .sortedWith(compareBy({ it.sortOrder }, { it.createdAt }))
@@ -150,21 +141,25 @@ class ZiluRepository(context: Context) {
         return rest + moved
     }
 
-    /**
-     * 老版本把「完成沉底」写在排序逻辑里，v4 改成统一用 sortOrder 表达。
-     * 读取时按日期规整一次：未完成保持原有相对顺序在前，已完成的沉到底部。
-     */
     private fun normalizeTodoOrder(todos: List<TodoItem>): List<TodoItem> =
         todos.groupBy { it.date }.values.flatMap { group ->
             group.sortedWith(compareBy({ it.done }, { it.sortOrder }, { it.createdAt }))
                 .mapIndexed { index, item -> item.copy(sortOrder = index) }
         }
 
-    /** 旧数据没有排序权重时，按文件原有顺序补一个递减权重，保持原来的显示顺序。 */
+    /** 旧数据没有排序权重时，按文件原有顺序补递减权重（文件夹、计划、子计划均补齐）。 */
     private fun normalizeFolderOrder(folders: List<PlanFolder>): List<PlanFolder> {
         val now = System.currentTimeMillis()
-        return folders.mapIndexed { index, folder ->
-            if (folder.order > 0L) folder else folder.copy(order = now - index)
+        return folders.mapIndexed { fIndex, folder ->
+            val normalizedPlans = folder.plans.mapIndexed { pIndex, plan ->
+                val normalizedSubs = plan.subPlans.mapIndexed { sIndex, sub ->
+                    if (sub.sortOrder > 0L) sub else sub.copy(sortOrder = now - sIndex)
+                }
+                val basePlan = if (plan.sortOrder > 0L) plan else plan.copy(sortOrder = now - pIndex)
+                basePlan.copy(subPlans = normalizedSubs)
+            }
+            val baseFolder = if (folder.order > 0L) folder else folder.copy(order = now - fIndex)
+            baseFolder.copy(plans = normalizedPlans)
         }
     }
 
@@ -180,7 +175,6 @@ class ZiluRepository(context: Context) {
         put("title", title)
         put("duration", durationSeconds)
         put("remaining", remainingSeconds)
-        // 注意：字符串不要写入 JSONObject.NULL，否则 optString 会读回 "null" 字面量
         reminderTime?.let { put("reminder", it) }
         put("createdDate", createdDate)
         put("created", createdAt)
@@ -235,6 +229,8 @@ class ZiluRepository(context: Context) {
         put("dueDay", dueDay ?: JSONObject.NULL)
         put("done", done)
         completedAt?.let { put("completedAt", it) }
+        put("pinned", pinned)
+        put("sortOrder", sortOrder)
     }
 
     private fun subPlan(o: JSONObject) = SubPlan(
@@ -243,7 +239,9 @@ class ZiluRepository(context: Context) {
         dueMonth = if (o.isNull("dueMonth")) null else o.optInt("dueMonth"),
         dueDay = if (o.isNull("dueDay")) null else o.optInt("dueDay"),
         done = o.optBoolean("done"),
-        completedAt = o.optString("completedAt").ifBlank { null }
+        completedAt = o.optString("completedAt").ifBlank { null },
+        pinned = o.optBoolean("pinned", false),
+        sortOrder = o.optLong("sortOrder", 0L)
     )
 
     private fun Plan.json() = JSONObject().apply {
@@ -254,6 +252,8 @@ class ZiluRepository(context: Context) {
         put("created", createdAt)
         put("done", done)
         completedAt?.let { put("completedAt", it) }
+        put("pinned", pinned)
+        put("sortOrder", sortOrder)
     }
 
     private fun plan(o: JSONObject) = Plan(
@@ -263,7 +263,9 @@ class ZiluRepository(context: Context) {
         reflection = o.optString("reflection"),
         createdAt = o.optString("created"),
         done = o.optBoolean("done"),
-        completedAt = o.optString("completedAt").ifBlank { null }
+        completedAt = o.optString("completedAt").ifBlank { null },
+        pinned = o.optBoolean("pinned", false),
+        sortOrder = o.optLong("sortOrder", 0L)
     )
 
     private fun PlanFolder.json() = JSONObject().apply {
@@ -273,6 +275,7 @@ class ZiluRepository(context: Context) {
         put("plans", JSONArray(plans.map { it.json() }))
         put("created", createdAt)
         put("order", order)
+        put("pinned", pinned)
     }
 
     private fun folder(o: JSONObject) = PlanFolder(
@@ -281,7 +284,8 @@ class ZiluRepository(context: Context) {
         colorIndex = o.optInt("color", 0),
         plans = o.array("plans") { plan(it) },
         createdAt = o.optString("created"),
-        order = o.optLong("order", 0L)
+        order = o.optLong("order", 0L),
+        pinned = o.optBoolean("pinned", false)
     )
 
     private fun CompletionLog.json() = JSONObject().apply {
