@@ -23,7 +23,7 @@ data class TaskDraft(
 class ZiluController(private val context: Context) {
     private val repo = ZiluRepository(context)
 
-    var state by mutableStateOf(repo.load())
+    var state by mutableStateOf<AppState>(repo.load())
         private set
 
     fun refresh() {
