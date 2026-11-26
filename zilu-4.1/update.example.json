@@ -1,8 +1,0 @@
-{
-  "versionCode": 7,
-  "versionName": "4.3.0",
-  "apkUrl": "https://github.com/skr-tom/zilv2/releases/download/v4.3.0/zilu-4.3.0.apk",
-  "changelog": "1. 应用内更新：检查新版本、后台下载、覆盖安装，不用卸载\n2. 修复若干已知问题，优化体验",
-  "force": false,
-  "sizeBytes": 0
-}
